@@ -383,13 +383,17 @@ def post_login() -> None:
 
 
 def get_user_details() -> None:
-    global is_loading, uuid, access_token, refresh_token, name, email, contacts
+    global is_loading, uuid, access_token, refresh_token, name, email, contacts, close_signal
     is_loading = True
 
     # Get user data
     try:
         contacts = bh.get_contacts(uuid, access_token)
         user_data = bh.get_details(uuid, access_token).split('|')
+    except httpx.ConnectError:
+        console.print('[red]Connection error. Please check your connection and API endpoint.', justify='center')
+        console.print('API Endpoint: ' + api_endpoint, justify='center')
+        close_signal = True
     except RuntimeError:
         refresh_access_token()
 
@@ -439,10 +443,6 @@ def refresh_access_token() -> None:
 if __name__ == '__main__':
     try:
         main()
-    except httpx.ConnectError:
-        console.print('[red]Connection error. Please check your connection and API endpoint.', justify='center')
-        console.print('API Endpoint: ' + api_endpoint, justify='center')
-        close_signal = True
     except Exception:
         console.print_exception()
         exit()

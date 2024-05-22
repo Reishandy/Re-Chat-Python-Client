@@ -390,10 +390,6 @@ def get_user_details() -> None:
     try:
         contacts = bh.get_contacts(uuid, access_token)
         user_data = bh.get_details(uuid, access_token).split('|')
-    except httpx.ConnectError:
-        console.print('[red]Connection error. Please check your connection and API endpoint.', justify='center')
-        console.print('API Endpoint: ' + api_endpoint, justify='center')
-        close_signal = True
     except RuntimeError:
         refresh_access_token()
 

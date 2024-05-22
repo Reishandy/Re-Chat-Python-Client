@@ -4,6 +4,7 @@ import threading
 import time
 import string
 
+import httpx
 import readchar
 import clipboard
 from rich.align import Align
@@ -438,6 +439,10 @@ def refresh_access_token() -> None:
 if __name__ == '__main__':
     try:
         main()
+    except httpx.ConnectError:
+        console.print('[red]Connection error. Please check your connection and API endpoint.', justify='center')
+        console.print('API Endpoint: ' + api_endpoint, justify='center')
+        close_signal = True
     except Exception:
         console.print_exception()
         exit()

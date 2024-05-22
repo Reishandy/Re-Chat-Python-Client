@@ -30,3 +30,9 @@ python rechat.py
 ## License
 
 [MIT](LICENSE)
+
+
+## Disclaimer (api endpoint)
+### The API endpoint used in this project is not hosted on a public server. You can host the API server on your local machine or on a cloud server. 
+
+To run the API server, follow the instructions in the [ReChat API](https://github.com/Reishandy/Re-Chat-API)

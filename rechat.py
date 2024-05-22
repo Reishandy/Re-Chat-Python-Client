@@ -1,3 +1,4 @@
+import asyncio
 import os
 import threading
 import time
@@ -10,12 +11,9 @@ from rich.console import Console
 from rich.live import Live
 from rich.panel import Panel
 
-import app.frontend_helper as fh
-import app.backend_handler as bh
-
 # === GLOBAL VARIABLES ===
 # API
-api_endpoint: str = 'http://0.0.0.0:8000/'
+api_endpoint: str = 'http://localhost:8000/'
 
 # User data
 uuid: str = ''
@@ -32,7 +30,8 @@ send_back: bool = False
 is_loading: bool = False
 
 # Mode
-current_mode: str = 'LOGIN_REGISTER'  # Possible: 'LOGIN_REGISTER', 'REGISTER', 'LOGIN', 'MAIN', 'ADD_CONTACT', 'CHAT'
+# Possible: 'LOGIN_REGISTER', 'REGISTER', 'LOGIN', 'MAIN', 'ADD_CONTACT', 'CONTACTS', 'CHAT'
+current_mode: str = 'LOGIN_REGISTER'
 current_selection: int = 0
 
 # Input
@@ -52,7 +51,7 @@ l_status: bool | None = None
 l_message: str = ''
 
 # Main value
-m_options: list[str] = ['Add Contact', 'Chat', 'Logout']
+m_options: list[str] = ['Add Contact', 'Contacts', 'Logout']
 
 # Add contact value
 a_value: str = ''
@@ -60,6 +59,15 @@ a_status: bool | None = None
 a_message: str = ''
 
 # Chat value
+chat_close_signal: threading.Event = threading.Event()
+chat_thread: threading.Thread | None = None
+messages: list[dict] = []
+partner_name: str = ''
+
+# Not good practice, but I don't care right now
+import app.frontend_helper as fh
+import app.backend_handler as bh
+import app.websocket_handler as wh
 
 
 def main():
@@ -86,20 +94,7 @@ def main():
 
             post_login()
 
-    # TODO: Get saved login if exist (check file exist or not first, then check the line)
-    # TODO: Prompt for register or login
-    # TODO: Save refresh token in a file
-    # TODO: Handle request 401, refreshing access token
-    # TODO: Get user data
-    # TODO: Get contact
-    # TODO: Display data (info and choice for add contact, chat, logout)
-    # TODO: back button: logout then logout and remove the saved login file
-    # TODO: back button: if add contact handle add contact
-    # TODO: back button: if chat, display all contact and can be selected
-    # TODO: if contact pressed, go to realtime chat stuff
-    # TODO: chat commands to quit or maybe keyboard shortcut?
-
-    with Live(render_switcher(), refresh_per_second=10, console=console) as live:
+    with Live(render_switcher(), refresh_per_second=20, console=console) as live:
         while True:
             live.update(render_switcher())
 
@@ -117,7 +112,8 @@ def main():
 def render_switcher() -> Align | Panel:
     # Main renderer
     global lr_options, current_selection, input_buffer, r_flag, r_value, r_status, r_message, l_flag, l_value, \
-        l_status, l_message, is_loading, name, email, uuid, m_options, a_status, a_message, contacts
+        l_status, l_message, is_loading, name, email, uuid, m_options, a_status, a_message, contacts, messages, \
+        partner_name
 
     if is_loading:
         return fh.get_loading()
@@ -133,12 +129,15 @@ def render_switcher() -> Align | Panel:
             return fh.get_menu(m_options, current_selection, name, email, uuid)
         case 'ADD_CONTACT':
             return fh.get_add_contact_form(input_buffer, a_status, a_message)
+        case 'CONTACTS':
+            return fh.get_contact_menu(contacts, current_selection)
         case 'CHAT':
-            return fh.get_chat_menu(contacts, current_selection)
+            return fh.get_chat(input_buffer, messages, uuid, partner_name)
 
 
 def handle_send_back() -> None:
-    global current_mode, r_flag, r_value, r_status, l_flag, l_value, l_status, input_buffer, a_value, a_status
+    global current_mode, r_flag, r_value, r_status, l_flag, l_value, l_status, input_buffer, a_value, a_status, \
+        chat_close_signal, chat_thread, messages, partner_name
 
     if r_status is not None or l_status is not None or a_status is not None:
         return
@@ -163,16 +162,22 @@ def handle_send_back() -> None:
             input_buffer = '█'
 
             current_mode = 'MAIN'
-        case 'CHAT':
-            # TODO: Join all websocket thread
-            # TODO: chat has own close signal?
-
+        case 'CONTACTS':
             current_mode = 'MAIN'
+        case 'CHAT':
+            chat_close_signal.set()
+            if chat_thread is not None:
+                chat_thread.join()
+                chat_thread = None
+
+            messages = []
+            partner_name = ''
+            current_mode = 'CONTACTS'
 
 
 def key_detector() -> None:
     global close_signal, current_selection, current_mode, lr_options, input_thread, input_buffer, input_keys, \
-        send_back, console, m_options, contacts
+        send_back, console, m_options, contacts, chat_thread, chat_close_signal
 
     option_len: int = 0
     key = None
@@ -187,15 +192,18 @@ def key_detector() -> None:
                 option_len = len(lr_options)
             case 'MAIN':
                 option_len = len(m_options)
-            case 'CHAT':
+            case 'CONTACTS':
                 option_len = len(contacts)
 
         try:
             key = readchar.readkey()
         except KeyboardInterrupt:
+            chat_close_signal.set()
+            if chat_thread is not None:
+                chat_thread.join()
+                chat_thread = None
+
             close_signal = True
-            # TODO: Join all websocket thread,
-            # TODO: chat has own close signal?
 
         match key:
             case readchar.key.ENTER:
@@ -203,6 +211,11 @@ def key_detector() -> None:
                     decide_enter_key()
                 except Exception:
                     console.print_exception()
+                    chat_close_signal.set()
+                    if chat_thread is not None:
+                        chat_thread.join()
+                        chat_thread = None
+
                     close_signal = True
             case readchar.key.UP:
                 current_selection = (current_selection - 1) % option_len
@@ -214,19 +227,19 @@ def key_detector() -> None:
             case readchar.key.CTRL_B:
                 send_back = True
 
-        if key in input_keys and current_mode not in ['LOGIN_REGISTER', 'MAIN', 'CHAT']:
+        if key in input_keys and current_mode not in ['LOGIN_REGISTER', 'MAIN', 'CONTACTS']:
             input_buffer = input_buffer[:-1]
             input_buffer += key
             input_buffer += '█'
 
-        if key == readchar.key.CTRL_V and current_mode not in ['LOGIN_REGISTER', 'MAIN', 'CHAT']:
+        if key == readchar.key.CTRL_V and current_mode not in ['LOGIN_REGISTER', 'MAIN', 'CONTACTS']:
             input_buffer = input_buffer[:-1]
             input_buffer = clipboard.paste()
             input_buffer += '█'
 
 
 def decide_enter_key():
-    global current_mode, close_signal, current_selection
+    global current_mode, close_signal, current_selection, chat_thread, messages, chat_close_signal, partner_name
 
     match current_mode:
         case 'LOGIN_REGISTER':
@@ -242,16 +255,22 @@ def decide_enter_key():
             if current_selection == 0:
                 current_mode = 'ADD_CONTACT'
             elif current_selection == 1:
-                current_mode = 'CHAT'
+                current_selection = 0
+                current_mode = 'CONTACTS'
             elif current_selection == 2:
                 handle_logout()
         case 'ADD_CONTACT':
             enter_add_contact()
+        case 'CONTACTS':
+            partner_name = contacts[current_selection]['name']
+            chat_thread = threading.Thread(target=wh.websocket_run, args=(uuid, contacts[current_selection]['uuid'],
+                                                                          access_token, messages, chat_close_signal),
+                                           daemon=True)
+            chat_thread.start()
+
+            current_mode = 'CHAT'
         case 'CHAT':
-            # TODO: init thread websocket with partner_uuid
-            global contacts
-            print(contacts[current_selection])
-            ...
+            enter_chat()
 
 
 def enter_register() -> None:
@@ -341,6 +360,13 @@ def enter_add_contact() -> None:
     is_loading = False
 
 
+def enter_chat() -> None:
+    global input_buffer
+
+    asyncio.run(wh.send_message(input_buffer[:-1]))
+    input_buffer = '█'
+
+
 def post_login() -> None:
     global current_mode, current_selection
 
@@ -370,8 +396,8 @@ def get_user_details() -> None:
         contacts = bh.get_contacts(uuid, access_token)
         user_data = bh.get_details(uuid, access_token).split('|')
 
-    name = user_data[1]
-    email = user_data[2]
+    name = user_data[2]
+    email = user_data[1]
 
     is_loading = False
 

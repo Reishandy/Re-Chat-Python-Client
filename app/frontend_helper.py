@@ -1,3 +1,7 @@
+import ast
+import os
+from datetime import datetime, timezone
+
 from rich import box
 from rich.align import Align
 from rich.panel import Panel
@@ -68,7 +72,7 @@ def get_register_form(input_buffer: str, r_flag: int, r_value: list[str], r_stat
         form.append(f'Email: {r_value[1]}\n')
         form.append(f'Password: {input_buffer_password}', style='blue')
 
-    panel = Panel(form, box=box.DOUBLE, width=60, padding=1, title='RE-CHAT | [red]Register',
+    panel = Panel(form, box=box.DOUBLE, width=60, padding=1, title='RE-CHAT | [dark_violet]Register',
                   subtitle='[yellow]Ctrl+C to exit, Ctrl+B: back')
     return Align.center(panel)
 
@@ -92,7 +96,7 @@ def get_login_form(input_buffer: str, l_flag: int, l_value: list[str], l_status:
         form.append(f'Email or UUID: {l_value[0]}\n')
         form.append(f'Password: {input_buffer_password}', style='blue')
 
-    panel = Panel(form, box=box.DOUBLE, width=60, padding=1, title='RE-CHAT | [green]Login',
+    panel = Panel(form, box=box.DOUBLE, width=60, padding=1, title='RE-CHAT | [dark_violet]Login',
                   subtitle='[yellow]Ctrl+C to exit, Ctrl+B: back')
     return Align.center(panel)
 
@@ -108,12 +112,12 @@ def get_add_contact_form(input_buffer: str, a_status: bool, a_message: str) -> A
     else:
         form.append(f'UUID: {input_buffer}\n', style='blue')
 
-    panel = Panel(form, box=box.DOUBLE, width=60, padding=1, title='RE-CHAT | [blue]Add Contact',
+    panel = Panel(form, box=box.DOUBLE, width=60, padding=1, title='RE-CHAT | [dark_violet]Add Contact',
                   subtitle='[yellow]Ctrl+C to exit, Ctrl+B: back')
     return Align.center(panel)
 
 
-def get_chat_menu(contacts: list[dict[str, str]], current_selection: int) -> Align:
+def get_contact_menu(contacts: list[dict[str, str]], current_selection: int) -> Align:
     menu = Text(justify='left')
 
     for i, contact in enumerate(contacts):
@@ -126,6 +130,32 @@ def get_chat_menu(contacts: list[dict[str, str]], current_selection: int) -> Ali
         else:
             menu.append(f'  {contact['name']} @ {contact['uuid']}\n', style='white')
 
-    panel = Panel(menu, box=box.DOUBLE, width=60, padding=1, title='RE-CHAT | [blue]Contacts',
+    panel = Panel(menu, box=box.DOUBLE, width=60, padding=1, title='RE-CHAT | [dark_violet]Contacts',
                   subtitle='[yellow]Ctrl+C: exit, Ctrl+B: back')
     return Align.center(panel)
+
+
+def get_chat(input_buffer: str, messages: list[dict], uuid: str, name) -> Panel:
+    terminal_height = os.get_terminal_size().lines - 12
+    terminal_width = os.get_terminal_size().columns - 5
+
+    chat = Text(justify='left')
+
+    chat.append(f"You: {input_buffer}\n", style="blue")
+    chat.append('-' * terminal_width + '\n')
+
+    messages_to_display = messages[-terminal_height:]
+    for msg in reversed(messages_to_display):
+        # Format the message
+        timestamp = datetime.strptime(msg['timestamp'], '%d/%m/%Y %H:%M:%S')
+        local_timestamp = timestamp.replace(tzinfo=timezone.utc).astimezone(tz=None)
+        read_status = '🗸' if msg['read_status'] else '✗'
+        local_timestamp_str = local_timestamp.strftime('%d/%m/%y %H:%M')
+
+        if msg['from_uuid'] == uuid:
+            chat.append(f"[{local_timestamp_str} {read_status}] You: {msg['message']}\n", style='')
+        else:
+            chat.append(f"[{local_timestamp_str} {read_status}] {name}: {msg['message']}\n")
+
+    return Panel(chat, box=box.DOUBLE, padding=1, title='RE-CHAT | [dark_violet]Contacts',
+                 subtitle='[yellow]Ctrl+C: exit, Ctrl+B: back')

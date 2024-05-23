@@ -404,7 +404,8 @@ def get_user_details() -> None:
 
 
 def handle_logout() -> None:
-    global uuid, access_token, refresh_token, current_mode, name, email, contacts, current_selection
+    global uuid, access_token, refresh_token, current_mode, name, email, contacts, current_selection, is_loading
+    is_loading = True
 
     # Call logout endpoint
     try:
@@ -423,6 +424,8 @@ def handle_logout() -> None:
 
         current_mode = 'LOGIN_REGISTER'
         current_selection = 0
+
+    is_loading = False
 
 
 def refresh_access_token() -> None:

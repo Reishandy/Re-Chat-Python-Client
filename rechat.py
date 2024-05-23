@@ -14,7 +14,8 @@ from rich.panel import Panel
 
 # === GLOBAL VARIABLES ===
 # API
-api_endpoint: str = 'http://localhost:8000/'
+# api_endpoint: str = 'http://localhost:8000/'
+api_endpoint: str = 'https://darkruxury-re-chat-syimslxy.leapcell.dev/'
 
 # User data
 uuid: str = ''

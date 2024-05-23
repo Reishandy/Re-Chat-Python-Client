@@ -43,7 +43,7 @@ async def receive_message(messages: list[str], chat_close_signal) -> None:
     global websocket
     if websocket is not None:
         try:
-            message = await asyncio.wait_for(websocket.recv(), timeout=0.1)
+            message = await asyncio.wait_for(websocket.recv(), timeout=1)
             message = ast.literal_eval(message)
             messages.append(message)
         except asyncio.TimeoutError:
@@ -60,7 +60,11 @@ async def main(uuid: str, partner_uuid: str, access_token: str, messages: list[s
     await send_message(credentials)
 
     # Receive initial messages
-    history_str = await websocket.recv()
+    try:
+        history_str = await websocket.recv()
+    except websockets.exceptions.ConnectionClosedError:
+        raise RuntimeError('Connection closed unexpectedly. Possible slow connection with the API server.')
+
     history: list = ast.literal_eval(history_str)
     messages.extend(reversed(history))
 

@@ -241,7 +241,7 @@ def key_detector() -> None:
 
 
 def decide_enter_key():
-    global current_mode, close_signal, current_selection, chat_thread, messages, chat_close_signal, partner_name
+    global current_mode, close_signal, current_selection, chat_thread, messages, chat_close_signal, partner_name, chat_close_signal
 
     match current_mode:
         case 'LOGIN_REGISTER':
@@ -264,6 +264,7 @@ def decide_enter_key():
         case 'ADD_CONTACT':
             enter_add_contact()
         case 'CONTACTS':
+            chat_close_signal.clear()
             partner_name = contacts[current_selection]['name']
             chat_thread = threading.Thread(target=wh.websocket_run, args=(uuid, contacts[current_selection]['uuid'],
                                                                           access_token, messages, chat_close_signal),

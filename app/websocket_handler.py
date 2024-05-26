@@ -6,6 +6,7 @@ import websockets
 import rechat
 
 api_endpoint: str = rechat.api_endpoint
+console = rechat.console
 
 websocket: websockets.WebSocketClientProtocol | None = None
 
@@ -62,11 +63,14 @@ async def main(uuid: str, partner_uuid: str, access_token: str, messages: list[s
     # Receive initial messages
     try:
         history_str = await websocket.recv()
+        history: list = ast.literal_eval(history_str)
+        messages.extend(reversed(history))
     except websockets.exceptions.ConnectionClosedError:
-        raise RuntimeError('Connection closed unexpectedly. Possible slow connection with the API server.')
-
-    history: list = ast.literal_eval(history_str)
-    messages.extend(reversed(history))
+        console.print('Connection closed unexpectedly. most likely connection issue with the API server\n'
+                      'Basically you can\'t chat and have to try using your own API (Localhost)'
+                      '.\n\n\n\n\n\n\n\n\n\n.',
+                      justify='center', style='bold red')
+        await disconnect()
 
     while not chat_close_signal.is_set():
         await receive_message(messages, chat_close_signal)
